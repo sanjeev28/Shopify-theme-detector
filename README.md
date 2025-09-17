@@ -1,5 +1,5 @@
-# ThemeSpot — Next.js 
+# ThemeSpot — Fixed Next.js (for Vercel)
 
-This is a minimal Next.js project containing a front-end and a serverless API route `/api/detect` that scrapes a target site's HTML and returns Shopify theme fingerprints.
+Minimal working Next.js project. Replace your repo files with these if Vercel build keeps failing.
 
-See the included files and deploy instructions.
+Deploy: push to GitHub and import to Vercel. Set NEXT_PUBLIC_AFFILIATE_BASE in Vercel env vars if needed.
