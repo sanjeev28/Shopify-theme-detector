@@ -1,5 +1,5 @@
 {
-  "name": "themespot-nextjs-fixed",
+  "name": "themespot-nextjs",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -7,12 +7,11 @@
     "build": "next build",
     "start": "next start"
   },
- "dependencies": {
-  "cheerio": "^1.0.0-rc.12",
-  "next": "13.4.0",
-  "react": "18.2.0",
-  "react-dom": "18.2.0",
-  "@swc/core": "^1.3.72"
-}
-
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "next": "13.4.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@swc/core": "^1.3.72"
+  }
 }
