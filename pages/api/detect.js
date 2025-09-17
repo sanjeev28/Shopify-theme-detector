@@ -1,5 +1,5 @@
 // pages/api/detect.js
-import cheerio from 'cheerio';
+import { parse } from 'node-html-parser';
 
 const FETCH_TIMEOUT = 15000; // 15s
 
@@ -11,10 +11,8 @@ export default async function handler(req, res) {
   const { url } = req.body || {};
   if (!url) return res.status(400).json({ error: 'Missing url in request body' });
 
-  // normalize
   const target = url.includes('://') ? url : 'https://' + url;
 
-  // Abort controller for timeout
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
 
@@ -24,7 +22,6 @@ export default async function handler(req, res) {
       redirect: 'follow',
       signal: controller.signal
     }).catch(err => {
-      // fetch rejected (e.g. aborted)
       throw new Error('Fetch failed: ' + (err && err.message ? err.message : String(err)));
     });
     clearTimeout(timeout);
@@ -43,64 +40,62 @@ export default async function handler(req, res) {
       throw new Error('Fetched body is empty or not text');
     }
 
-    // Defensive: ensure cheerio is available
-    if (!cheerio || typeof cheerio.load !== 'function') {
-      throw new Error('Cheerio not available in runtime');
-    }
-
-    const $ = cheerio.load(html);
+    // parse with node-html-parser
+    const root = parse(html, { script: true, style: true, pre: true });
 
     let evidence = [];
     let isShopify = false;
     let themeName = null;
 
-    // 1) Search inline scripts for window.Shopify.theme
-    const scriptsText = $('script')
-      .map((i, el) => $(el).html())
-      .get()
-      .filter(Boolean)
-      .join('\n');
-
-    const m = scriptsText.match(/Shopify\.theme\s*=\s*({[\s\S]*?})/);
-    if (m) {
-      // try parse
-      try {
-        const parsed = JSON.parse(m[1]);
-        isShopify = true;
-        themeName = parsed.name || parsed.theme_name || parsed.id || parsed.role || themeName;
-        evidence.push('window.Shopify.theme (inline script)');
-      } catch (e) {
-        evidence.push('window.Shopify.theme (found but not JSON-parseable)');
+    // 1) Try to find inline window.Shopify.theme JSON inside <script> tags
+    const scriptNodes = root.querySelectorAll('script');
+    for (const s of scriptNodes) {
+      const txt = s.text || '';
+      const m = txt.match(/Shopify\.theme\s*=\s*({[\s\S]*?})/);
+      if (m) {
+        try {
+          const parsed = JSON.parse(m[1]);
+          isShopify = true;
+          themeName = parsed.name || parsed.theme_name || parsed.id || parsed.role || themeName;
+          evidence.push('window.Shopify.theme (inline script)');
+          break; // found enough
+        } catch (e) {
+          evidence.push('window.Shopify.theme (found but not JSON-parseable)');
+        }
       }
     }
 
-    // 2) look for /themes/<handle>/ in assets
-    const assets = $('link[href], script[src], img[src]')
-      .map((i, el) => $(el).attr('href') || $(el).attr('src'))
-      .get()
-      .filter(Boolean);
+    // 2) Search asset URLs for /themes/<handle>/
+    const assetAttrs = [];
+    const links = root.querySelectorAll('link');
+    links.forEach(n => { const h = n.getAttribute('href'); if (h) assetAttrs.push(h); });
+    const scripts = root.querySelectorAll('script');
+    scripts.forEach(n => { const s = n.getAttribute('src'); if (s) assetAttrs.push(s); });
+    const imgs = root.querySelectorAll('img');
+    imgs.forEach(n => { const s = n.getAttribute('src'); if (s) assetAttrs.push(s); });
 
-    const themeAsset = assets.find(u => /\/themes\/([^\/]+)\//i.test(u));
-    if (themeAsset) {
-      isShopify = true;
-      const handle = themeAsset.match(/\/themes\/([^\/]+)\//i)[1];
-      themeName = themeName || handle;
-      evidence.push('asset URL contains /themes/: ' + themeAsset);
+    for (const u of assetAttrs) {
+      if (/\/themes\/([^\/]+)\//i.test(u)) {
+        isShopify = true;
+        const handle = u.match(/\/themes\/([^\/]+)\//i)[1];
+        themeName = themeName || handle;
+        evidence.push('asset URL contains /themes/: ' + u);
+        break;
+      }
     }
 
-    // 3) settings_data.json hint
-    const settingsRef = assets.find(u => /settings_data\.json/i.test(u));
-    if (settingsRef) {
-      isShopify = true;
-      evidence.push('settings_data.json: ' + settingsRef);
+    // 3) look for settings_data.json reference
+    for (const u of assetAttrs) {
+      if (/settings_data\.json/i.test(u)) {
+        isShopify = true;
+        evidence.push('settings_data.json: ' + u);
+        break;
+      }
     }
 
-    // respond
     return res.json({ isShopify, themeName, evidence });
   } catch (err) {
-    // log the real error to Vercel logs (console.error is visible in Vercel)
     console.error('detect error for', target, err && err.stack ? err.stack : err);
-    // send helpful message to client (no stack)
     return res.status(500).json({ error: String(err && err.message ? err.message : err) });
   } finally {
     clearTimeout(timeout);
