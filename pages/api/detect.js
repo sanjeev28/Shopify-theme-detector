@@ -1,4 +1,3 @@
-
 import cheerio from 'cheerio';
 
 export default async function handler(req, res) {
@@ -9,13 +8,10 @@ export default async function handler(req, res) {
 
   try {
     const target = url.includes('://') ? url : 'https://' + url;
-
-    // fetch the target site server-side (Vercel Node runtime has global fetch)
     const r = await fetch(target, {
       headers: { 'User-Agent': 'ThemeSpot/1.0 (+https://yourdomain.example)' },
       redirect: 'follow'
     });
-
     if (!r.ok) return res.status(502).json({ error: 'Failed to fetch target site', status: r.status });
 
     const html = await r.text();
@@ -25,7 +21,6 @@ export default async function handler(req, res) {
     let isShopify = false;
     let themeName = null;
 
-    // 1) try to find window.Shopify.theme in inline scripts
     const scriptsText = $('script').map((i, el) => $(el).html()).get().join('\n');
     const m = scriptsText.match(/Shopify\.theme\s*=\s*({[\s\S]*?})/);
     if (m) {
@@ -39,7 +34,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 2) search asset URLs for /themes/<handle>/
     const assets = $('link[href], script[src], img[src]').map((i, el) => $(el).attr('href') || $(el).attr('src')).get().filter(Boolean);
     const themeAsset = assets.find(u => /\/themes\/([^\/]+)\//i.test(u));
     if (themeAsset) {
@@ -49,7 +43,6 @@ export default async function handler(req, res) {
       evidence.push('asset URL contains /themes/: ' + themeAsset);
     }
 
-    // 3) look for settings_data.json reference
     const settingsRef = assets.find(u => /settings_data\.json/i.test(u));
     if (settingsRef) {
       isShopify = true;
