@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import Head from 'next/head';
-import '../styles/globals.css';
 
 export default function Home() {
   const [url, setUrl] = useState('');
